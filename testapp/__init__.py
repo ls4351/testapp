@@ -5,7 +5,7 @@ import os
 app_data_path = os.getenv("TESTAPP_DATA_PATH")
 
 if app_data_path is None:
-    raise Exception("You need to add the path to your data directory to the APP_DATA_PATH environmental variable!")
+    raise Exception("You need to add the path to your data directory to the TESTAPP_DATA_PATH environmental variable!")
 
 
 can_cd_to_data_path = os.system("cd " + app_data_path)
