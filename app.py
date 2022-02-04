@@ -13,7 +13,7 @@ app.layout = html.Div([
     ]),
     html.Br(),
     html.Div(id='ticker-output'),
-    html.Img(src="assets/charging_bull.jpg")
+    html.Img(src="assets/bear_statue.jpg")
 ])
 
 
