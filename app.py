@@ -6,6 +6,7 @@ from dash.dependencies import Input, Output
 app = Dash(__name__)
 server = app.server
 app.layout = html.Div([
+    html.H1('You Passed'),
     github_info_header(),
     html.Div([
         "Input: ",
