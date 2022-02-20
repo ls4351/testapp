@@ -1,5 +1,9 @@
 numpy
-dash
-waitress
-pandas
+dash==2.1.0
+waitress==2.0.0
+pandas==1.4.1
 gitpython
+ibapi==9.81.1.post1
+kaleido
+plotly==5.6.0
+setuptools==57.0.0

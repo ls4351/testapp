@@ -1,29 +1,24 @@
-from dash import *
-from testapp import *
-from dash import dcc
+from dash import Dash, dcc, html, callback
 from dash.dependencies import Input, Output
+from pages import main_page, hw3_1_page
 
-app = Dash(__name__)
+app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
 app.layout = html.Div([
-    html.H1('You Passed'),
-    github_info_header(),
-    html.Div([
-        "Input: ",
-        dcc.Input(id='ticker-input', value='Enter stock ticker', type='text')
-    ]),
-    html.Br(),
-    html.Div(id='ticker-output'),
-    html.Img(src="assets/charging_bull.jpg")
+    dcc.Location(id='url', refresh=False),
+    html.Div(id='page-content')
 ])
 
 
-@app.callback(
-    Output(component_id='ticker-output', component_property='children'),
-    Input(component_id='ticker-input', component_property='value')
-)
-def display_output(input_value):
-    return 'You chose: {}'.format(input_value)
+@callback(Output('page-content', 'children'),
+          Input('url', 'pathname'))
+def display_page(pathname):
+    if pathname == '/':
+        return main_page.layout
+    elif pathname == '/homework_3.1':
+        return hw3_1_page.layout
+    else:
+        return '404'
 
 
 if __name__ == '__main__':
