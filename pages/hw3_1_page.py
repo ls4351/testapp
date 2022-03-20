@@ -1,4 +1,5 @@
 import plotly.graph_objects as go
+import dash
 from dash import dcc
 from dash import html
 from dash import callback
@@ -175,13 +176,21 @@ layout = html.Div([
         style={'display': 'inline-block', 'padding-top': '5px'}
     ),
     # Submit button
-    html.Button('Submit', id='submit-button', n_clicks=0),
+    html.Button('Submit', id='submit-button', n_clicks=0, disabled=False),
+    # Divs that only serve as a state holder
+    html.Div(id='submit-button-disabled', children=0, style=dict(display='none')),
+    html.Div(id='submit-button-enabled', children=0, style=dict(display='none')),
     # Line break
     html.Br(),
     # Div to hold the initial instructions and the updated info once submit is pressed
     html.Div(id='currency-output', children='Enter a currency code and press submit'),
     # Div to hold the candlestick graph
-    html.Div([dcc.Graph(id='candlestick-graph')]),
+    # Loading spinner for graph
+    dcc.Loading(
+        id="loading-1",
+        type="default",
+        children=html.Div([dcc.Graph(id='candlestick-graph')]),
+    ),
     # Another line break
     html.Br(),
     # Section title
@@ -205,6 +214,36 @@ layout = html.Div([
     html.Button('Trade', id='trade-button', n_clicks=0)
 
 ])
+
+
+# This callback only cares about the input event, not its value
+# This is called if both events happen together or if only one happens
+@callback(
+    Output(component_id='submit-button', component_property='disabled'),
+    Input('submit-button-disabled', 'children'),
+    Input('submit-button-enabled', 'children'),
+)
+def should_disable_button(should_disable, should_enable):
+    if len(dash.callback_context.triggered) == 1:
+        context = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
+        return context == 'submit-button-disabled'
+
+# Breaking the process into 2 separate triggers.
+# Rationale: If 'should_disable_button' waits for either 'submit-button' or 'candlestick-graph' directly,
+# Dash only delivers those events together to 'should_disable_button'
+@callback(
+    Output(component_id='submit-button-disabled', component_property='children'),
+    Input('submit-button', 'n_clicks'),
+)
+def trigger_disable_button_(n_click):
+    return 1
+
+@callback(
+    Output(component_id='submit-button-enabled', component_property='children'),
+    Input('candlestick-graph', 'figure'),
+)
+def trigger_enable_button(n_click):
+    return 1
 
 
 @callback(
