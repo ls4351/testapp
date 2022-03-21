@@ -7,6 +7,10 @@ import time
 default_hostname = '127.0.0.1'
 default_port = 7497
 default_client_id = 10645
+DEFAULT_ERROR_CODE = -999
+SHORT_SLEEP_SECONDS = 0.1
+MEDIUM_SLEEP_SECONDS = 0.5
+LONG_SLEEP_SECONDS = 5
 
 
 class ibkr_app(EWrapper, EClient):
@@ -17,14 +21,18 @@ class ibkr_app(EWrapper, EClient):
         ])
         self.next_valid_id = None
         self.historical_data_end = ''
-        self.contract_details = ''
-        self.contract_details_end = ''
+        self.contract_details = None
+        self.contract_details_end = None
+        self.contract_details_reqId = None
 
         self.historical_data = pd.DataFrame(columns=['date', 'open', 'close', 'high', 'low'])
         self.managed_accounts = ''
 
     def error(self, reqId, errorCode, errorString):
-        if reqId != -1:
+        if reqId == self.contract_details_reqId:
+            print(f'Error from contract details api: errorCode={errorCode} errorMessage={errorString}')
+            self.contract_details_end = DEFAULT_ERROR_CODE
+        elif reqId != -1:
             print("Error: ", reqId, " ", errorCode, " ", errorString)
             print("Closing connection!")
             self.disconnect()
@@ -56,13 +64,19 @@ class ibkr_app(EWrapper, EClient):
         print("HistoricalDataEnd. ReqId:", reqId, "from", start, "to", end)
         self.historical_data_end = reqId
 
+    def contractDetails(self, reqId: int, contractDetails):
+        self.contract_details = contractDetails
+
+    def contractDetailsEnd(self, reqId: int):
+        self.contract_details_end = reqId
+
 
 def fetch_managed_accounts(hostname=default_hostname, port=default_port,
                            client_id=default_client_id):
     app = ibkr_app()
     app.connect(hostname, port, client_id)
     while not app.isConnected():
-        time.sleep(0.01)
+        time.sleep(SHORT_SLEEP_SECONDS)
 
     def run_loop():
         app.run()
@@ -70,7 +84,7 @@ def fetch_managed_accounts(hostname=default_hostname, port=default_port,
     api_thread = threading.Thread(target=run_loop, daemon=True)
     api_thread.start()
     while isinstance(app.next_valid_id, type(None)):
-        time.sleep(0.01)
+        time.sleep(SHORT_SLEEP_SECONDS)
     app.disconnect()
     return app.managed_accounts
 
@@ -82,8 +96,7 @@ def fetch_historical_data(contract, endDateTime='', durationStr='30 D',
     app = ibkr_app()
     app.connect(hostname, port, client_id)
     while not app.isConnected():
-        print("Waiting for connection...")
-        time.sleep(10)
+        time.sleep(SHORT_SLEEP_SECONDS)
 
     def run_loop():
         app.run()
@@ -91,14 +104,38 @@ def fetch_historical_data(contract, endDateTime='', durationStr='30 D',
     api_thread = threading.Thread(target=run_loop, daemon=True)
     api_thread.start()
     while isinstance(app.next_valid_id, type(None)):
-        time.sleep(0.01)
+        time.sleep(SHORT_SLEEP_SECONDS)
     tickerId = app.next_valid_id
     app.reqHistoricalData(
         tickerId, contract, endDateTime, durationStr, barSizeSetting,
         whatToShow, useRTH, formatDate=1, keepUpToDate=False, chartOptions=[])
     while app.historical_data_end != tickerId:
-        time.sleep(1)
+        time.sleep(MEDIUM_SLEEP_SECONDS)
         if not app.isConnected():
             break
     app.disconnect()
     return app.historical_data
+
+
+def fetch_contract_details(contract, hostname=default_hostname,
+                           port=default_port, client_id=default_client_id):
+    app = ibkr_app()
+    app.connect(hostname, port, client_id)
+    while not app.isConnected():
+        time.sleep(SHORT_SLEEP_SECONDS)
+
+    def run_loop():
+        app.run()
+
+    api_thread = threading.Thread(target=run_loop, daemon=True)
+    api_thread.start()
+    while isinstance(app.next_valid_id, type(None)):
+        time.sleep(SHORT_SLEEP_SECONDS)
+    app.contract_details_reqId = app.next_valid_id
+    app.reqContractDetails(app.contract_details_reqId, contract)
+    while (app.contract_details_end != app.contract_details_reqId) and (app.contract_details_end != DEFAULT_ERROR_CODE):
+        time.sleep(MEDIUM_SLEEP_SECONDS)
+        if not app.isConnected():
+            break
+    app.disconnect()
+    return app.contract_details

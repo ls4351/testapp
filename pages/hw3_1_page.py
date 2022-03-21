@@ -289,6 +289,10 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
           f"\n\t what_to_show:  {what_to_show}"
           f"\n\t rth:  {bool(rth_choice)}"
           )
+    print("Checking if contract is valid...")
+    contract_details = fetch_contract_details(contract)
+    if isinstance(contract_details, type(None)):
+        return ('Currency pair ' + currency_string + ' is not valid'), {}
 
     cph = fetch_historical_data(
         contract=contract,
