@@ -216,17 +216,37 @@ layout = html.Div([
     html.Div(
         id='limit-price-div',
         # The input object itself
-        children=["Limit Price: ", dcc.Input(id='limit-price', value='0', type='number')],
+        children=[html.Label("Limit Price: "), dcc.Input(id='limit-price', value='0', type='number')],
         # Style it so that the submit button appears beside the input.
         style={'display': 'inline-block', 'padding-top': '5px'}
     ),
     html.Br(),
-    # Text input for the currency pair to be traded
-    dcc.Input(id='trade-currency', value='AUD.CAD', type='text'),
-    # Numeric input for the trade amount
-    dcc.Input(id='trade-amt', value='0', type='number'),
-    # Submit button for the trade
-    html.Button('Trade', id='trade-button', n_clicks=0),
+    html.Div(
+        children=[html.Label("Currency: "), dcc.Input(id='currency', value='USD', type='text')],
+        # Style it so that the submit button appears beside the input.
+        style={'display': 'inline-block', 'padding-top': '5px'}
+    ),
+    html.Br(),
+    html.Div(
+        children=[
+            html.Label("Security Type: "),
+            dcc.Dropdown(
+                options=[
+                    {'label': 'STOCK', 'value': 'STK'},
+                    {'label': 'CASH', 'value': 'CASH'},
+                    {'label': 'CRYPTO', 'value': 'CRYPTO'},
+                ],
+                value='STK',
+                id='security-type'
+            ),
+            html.Br(),
+            dcc.Input(id='security-symbol', value='AAPL', type='text'),
+            dcc.Input(id='trade-amt', value='0', type='number'),
+            html.Button('Trade', id='trade-button', n_clicks=0)
+        ],
+        style={'display': 'inline-block', 'padding-top': '5px'}
+    ),
+
     # Div to confirm what trade was made
     html.Div(id='trade-output'),
 
@@ -357,24 +377,38 @@ def display_limit_price(order_type):
     Input('trade-button', 'n_clicks'),
     # We DON'T want to run this function whenever buy-or-sell, trade-currency, or trade-amt is updated, so we pass those
     #   in as States, not Inputs:
-    [State('buy-or-sell', 'value'), State('trade-currency', 'value'), State('trade-amt', 'value'),
+    [State('security-type', 'value'), State('buy-or-sell', 'value'), State('security-symbol', 'value'),
+     State('trade-amt', 'value'), State('currency', 'value'),
      State('market-or-limit', 'value'), State('limit-price', 'value')],
     # We DON'T want to start executing trades just because n_clicks was initialized to 0!!!
     prevent_initial_call=True
 )
-def trade(n_clicks, action, trade_currency, trade_amt, order_type,
-          limit_price):  # Still don't use n_clicks, but we need the dependency
-
+def trade(n_clicks, sec_type, action, security_symbol, trade_amt, currency, order_type, limit_price):
     contract = Contract()
-    contract.symbol = trade_currency.split(".")[0]
-    contract.secType = 'CASH'
-    contract.exchange = 'IDEALPRO'
-    contract.currency = trade_currency.split(".")[1]
+
+    if sec_type == 'STK':
+        contract.symbol = security_symbol
+        contract.secType = 'STK'
+        contract.exchange = 'SMART'
+        contract.primaryExchange = 'ARCA'
+        contract.currency = currency
+    elif sec_type == 'CASH':
+        contract.symbol = security_symbol.split(".")[0]
+        contract.secType = 'CASH'
+        contract.exchange = 'IDEALPRO'
+        contract.currency = security_symbol.split(".")[1]
+    elif sec_type == 'CRYPTO':
+        contract.symbol = security_symbol
+        contract.secType = 'CRYPTO'
+        contract.currency = currency
+        contract.exchange = 'PAXOS'
 
     print("Order Input:"
+          f"\n\t sec_type: {sec_type}"
           f"\n\t action: {action}"
           f"\n\t contract.symbol: {contract.symbol}"
           f"\n\t contract.currency: {contract.currency}"
+          f"\n\t currency: {currency}"
           f"\n\t trade_amt: {trade_amt}"
           f"\n\t order_type: {order_type}"
           f"\n\t limit_price: {limit_price}"
@@ -383,7 +417,7 @@ def trade(n_clicks, action, trade_currency, trade_amt, order_type,
     print("Checking if contract is valid...")
     contract_details = fetch_contract_details(contract)
     if isinstance(contract_details, type(None)):
-        return 'Currency pair ' + trade_currency + ' is not valid'
+        return 'Contract for ' + security_symbol + ' is not valid'
 
     order = Order()
     order.action = action
@@ -391,6 +425,11 @@ def trade(n_clicks, action, trade_currency, trade_amt, order_type,
     order.orderType = order_type
     if order_type == 'LMT':
         order.lmtPrice = limit_price
+    if sec_type == 'CRYPTO':
+        order.tif = 'IOC'  # tif = TimeInForce  IOC = Immediate or Cancel
+        if action == 'BUY' and order_type == 'MKT':
+            order.cashQty = trade_amt
+            order.totalQuantity = ''
 
     msg = submit_order(contract, order)
 
