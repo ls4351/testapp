@@ -195,8 +195,6 @@ layout = html.Div([
     html.Br(),
     # Section title
     html.H4("Make a Trade"),
-    # Div to confirm what trade was made
-    html.Div(id='trade-output'),
     # Radio items to select buy or sell
     dcc.RadioItems(
         id='buy-or-sell',
@@ -206,12 +204,30 @@ layout = html.Div([
         ],
         value='BUY'
     ),
+    dcc.RadioItems(
+        id='market-or-limit',
+        options=[
+            {'label': 'MARKET', 'value': 'MKT'},
+            {'label': 'LIMIT', 'value': 'LMT'}
+        ],
+        value='MKT'
+    ),
+    html.Div(
+        id='limit-price-div',
+        # The input object itself
+        children=["Limit Price: ", dcc.Input(id='limit-price', value='0', type='number')],
+        # Style it so that the submit button appears beside the input.
+        style={'display': 'inline-block', 'padding-top': '5px'}
+    ),
+    html.Br(),
     # Text input for the currency pair to be traded
     dcc.Input(id='trade-currency', value='AUDCAD', type='text'),
     # Numeric input for the trade amount
     dcc.Input(id='trade-amt', value='20000', type='number'),
     # Submit button for the trade
-    html.Button('Trade', id='trade-button', n_clicks=0)
+    html.Button('Trade', id='trade-button', n_clicks=0),
+    # Div to confirm what trade was made
+    html.Div(id='trade-output'),
 
 ])
 
@@ -317,6 +333,17 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
     fig.update_layout(title=('Exchange Rate: ' + currency_string))
 
     return ('Submitted query for ' + currency_string), fig
+
+
+@callback(
+    Output('limit-price-div', 'style'),
+    Input('market-or-limit', 'value')
+)
+def display_limit_price(order_type):
+    if order_type == 'LMT':
+        return {'display': 'inline-block'}
+    else:
+        return {'display': 'none'}
 
 
 # Callback for what to do when trade-button is pressed
