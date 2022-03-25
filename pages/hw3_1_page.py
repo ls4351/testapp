@@ -5,6 +5,7 @@ from dash import html
 from dash import callback
 from dash.dependencies import Input, Output, State
 from ibapi.contract import Contract
+from ibapi.order import Order
 from fintech_ibkr import *
 
 layout = html.Div([
@@ -221,9 +222,9 @@ layout = html.Div([
     ),
     html.Br(),
     # Text input for the currency pair to be traded
-    dcc.Input(id='trade-currency', value='AUDCAD', type='text'),
+    dcc.Input(id='trade-currency', value='AUD.CAD', type='text'),
     # Numeric input for the trade amount
-    dcc.Input(id='trade-amt', value='20000', type='number'),
+    dcc.Input(id='trade-amt', value='0', type='number'),
     # Submit button for the trade
     html.Button('Trade', id='trade-button', n_clicks=0),
     # Div to confirm what trade was made
@@ -244,6 +245,7 @@ def should_disable_button(should_disable, should_enable):
         context = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
         return context == 'submit-button-disabled'
 
+
 # Breaking the process into 2 separate triggers.
 # Rationale: If 'should_disable_button' waits for either 'submit-button' or 'candlestick-graph' directly,
 # Dash only delivers those events together to 'should_disable_button'
@@ -253,6 +255,7 @@ def should_disable_button(should_disable, should_enable):
 )
 def trigger_disable_button_(n_click):
     return 1
+
 
 @callback(
     Output(component_id='submit-button-enabled', component_property='children'),
@@ -296,7 +299,7 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
     contract.exchange = 'IDEALPRO'  # 'IDEALPRO' is the currency exchange.
     contract.currency = currency_string.split(".")[1]
 
-    print("Input:"
+    print("Graph Input:"
           f"\n\t contract.symbol: {contract.symbol}"
           f"\n\t contract.currency: {contract.currency}"
           f"\n\t end_date_time: {end_date_time}"
@@ -354,20 +357,41 @@ def display_limit_price(order_type):
     Input('trade-button', 'n_clicks'),
     # We DON'T want to run this function whenever buy-or-sell, trade-currency, or trade-amt is updated, so we pass those
     #   in as States, not Inputs:
-    [State('buy-or-sell', 'value'), State('trade-currency', 'value'), State('trade-amt', 'value')],
+    [State('buy-or-sell', 'value'), State('trade-currency', 'value'), State('trade-amt', 'value'),
+     State('market-or-limit', 'value'), State('limit-price', 'value')],
     # We DON'T want to start executing trades just because n_clicks was initialized to 0!!!
     prevent_initial_call=True
 )
-def trade(n_clicks, action, trade_currency, trade_amt):  # Still don't use n_clicks, but we need the dependency
+def trade(n_clicks, action, trade_currency, trade_amt, order_type,
+          limit_price):  # Still don't use n_clicks, but we need the dependency
 
-    # Make the message that we want to send back to trade-output
-    msg = action + ' ' + trade_amt + ' ' + trade_currency
+    contract = Contract()
+    contract.symbol = trade_currency.split(".")[0]
+    contract.secType = 'CASH'
+    contract.exchange = 'IDEALPRO'
+    contract.currency = trade_currency.split(".")[1]
 
-    # Make our trade_order object -- a DICTIONARY.
-    trade_order = {
-        "action": action,
-        "trade_currency": trade_currency,
-        "trade_amt": trade_amt
-    }
+    print("Order Input:"
+          f"\n\t action: {action}"
+          f"\n\t contract.symbol: {contract.symbol}"
+          f"\n\t contract.currency: {contract.currency}"
+          f"\n\t trade_amt: {trade_amt}"
+          f"\n\t order_type: {order_type}"
+          f"\n\t limit_price: {limit_price}"
+          )
+
+    print("Checking if contract is valid...")
+    contract_details = fetch_contract_details(contract)
+    if isinstance(contract_details, type(None)):
+        return 'Currency pair ' + trade_currency + ' is not valid'
+
+    order = Order()
+    order.action = action
+    order.totalQuantity = trade_amt
+    order.orderType = order_type
+    if order_type == 'LMT':
+        order.lmtPrice = limit_price
+
+    msg = submit_order(contract, order)
 
     return msg

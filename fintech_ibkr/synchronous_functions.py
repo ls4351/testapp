@@ -1,5 +1,6 @@
 import pandas as pd
 from ibapi.client import EClient
+from ibapi.common import OrderId
 from ibapi.wrapper import EWrapper
 import threading
 import time
@@ -11,6 +12,7 @@ DEFAULT_ERROR_CODE = -999
 SHORT_SLEEP_SECONDS = 0.1
 MEDIUM_SLEEP_SECONDS = 0.5
 LONG_SLEEP_SECONDS = 5
+WARNING_ERROR_CODES = [399, 504, 2104, 2168, 2169]
 
 
 class ibkr_app(EWrapper, EClient):
@@ -24,6 +26,8 @@ class ibkr_app(EWrapper, EClient):
         self.contract_details = None
         self.contract_details_end = None
         self.contract_details_reqId = None
+        self.order_reqId_end = None
+        self.order_reqId = None
 
         self.historical_data = pd.DataFrame(columns=['date', 'open', 'close', 'high', 'low'])
         self.managed_accounts = ''
@@ -32,7 +36,11 @@ class ibkr_app(EWrapper, EClient):
         if reqId == self.contract_details_reqId:
             print(f'Error from contract details api: errorCode={errorCode} errorMessage={errorString}')
             self.contract_details_end = DEFAULT_ERROR_CODE
-        elif reqId != -1:
+        elif reqId == self.order_reqId_end:
+            print(f'Error from place order api: errorCode={errorCode} errorMessage={errorString}')
+            self.order_reqId_end = DEFAULT_ERROR_CODE
+
+        if (reqId != -1) and errorCode not in WARNING_ERROR_CODES:
             print("Error: ", reqId, " ", errorCode, " ", errorString)
             print("Closing connection!")
             self.disconnect()
@@ -69,6 +77,13 @@ class ibkr_app(EWrapper, EClient):
 
     def contractDetailsEnd(self, reqId: int):
         self.contract_details_end = reqId
+
+    def orderStatus(self, orderId: OrderId, status: str, filled: float,
+                    remaining: float, avgFillPrice: float, permId: int,
+                    parentId: int, lastFillPrice: float, clientId: int,
+                    whyHeld: str, mktCapPrice: float):
+        print(f'Order {orderId} status is {status}')
+        self.order_reqId_end = orderId
 
 
 def fetch_managed_accounts(hostname=default_hostname, port=default_port,
@@ -139,3 +154,32 @@ def fetch_contract_details(contract, hostname=default_hostname,
             break
     app.disconnect()
     return app.contract_details
+
+
+def submit_order(contract, order, hostname=default_hostname,
+                 port=default_port, client_id=default_client_id):
+    app = ibkr_app()
+    app.connect(hostname, port, client_id)
+    while not app.isConnected():
+        time.sleep(SHORT_SLEEP_SECONDS)
+
+    def run_loop():
+        app.run()
+
+    api_thread = threading.Thread(target=run_loop, daemon=True)
+    api_thread.start()
+    while isinstance(app.next_valid_id, type(None)):
+        time.sleep(SHORT_SLEEP_SECONDS)
+
+    app.order_reqId = app.next_valid_id
+    app.placeOrder(app.order_reqId, contract, order)
+
+    while (app.order_reqId_end != app.order_reqId) and (app.order_reqId_end != DEFAULT_ERROR_CODE):
+        time.sleep(MEDIUM_SLEEP_SECONDS)
+        if not app.isConnected():
+            break
+    app.disconnect()
+
+    msg = f'Order {app.order_reqId} successfully submitted'
+    print(msg)
+    return msg
