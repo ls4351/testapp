@@ -1,12 +1,14 @@
 import plotly.graph_objects as go
 import dash
-from dash import dcc
-from dash import html
-from dash import callback
+from dash import dcc, html, callback, dash_table
 from dash.dependencies import Input, Output, State
 from ibapi.contract import Contract
 from ibapi.order import Order
 from fintech_ibkr import *
+import pandas as pd
+
+APP_DATA_PATH = f"{os.getenv('TESTAPP_DATA_PATH')}\submitted_orders.csv"
+order_data = pd.read_csv(APP_DATA_PATH)
 
 layout = html.Div([
 
@@ -193,8 +195,7 @@ layout = html.Div([
         children=html.Div([dcc.Graph(id='candlestick-graph')]),
     ),
     # Another line break
-    html.Br(),
-    # Section title
+    html.H3("Section 2: Place Orders"),
     html.H4("Make a Trade"),
     # Radio items to select buy or sell
     dcc.RadioItems(
@@ -249,7 +250,17 @@ layout = html.Div([
 
     # Div to confirm what trade was made
     html.Div(id='trade-output'),
-
+    html.Br(),
+    html.H3("Section 3: Display Order History"),
+    html.Div(
+        children=[
+            dash_table.DataTable(
+                order_data.to_dict('records'),
+                [{"name": i, "id": i} for i in order_data.columns],
+                id='order-history-tbl'
+            )],
+        style={'width': '50%', 'margin': '0 auto'}
+    )
 ])
 
 
@@ -371,19 +382,24 @@ def display_limit_price(order_type):
 
 # Callback for what to do when trade-button is pressed
 @callback(
-    # We're going to output the result to trade-output
-    Output(component_id='trade-output', component_property='children'),
+    [
+        Output(component_id='trade-output', component_property='children'),
+        Output(component_id='order-history-tbl', component_property='data')
+    ],
     # We only want to run this callback function when the trade-button is pressed
     Input('trade-button', 'n_clicks'),
     # We DON'T want to run this function whenever buy-or-sell, trade-currency, or trade-amt is updated, so we pass those
     #   in as States, not Inputs:
     [State('security-type', 'value'), State('buy-or-sell', 'value'), State('security-symbol', 'value'),
      State('trade-amt', 'value'), State('currency', 'value'),
-     State('market-or-limit', 'value'), State('limit-price', 'value')],
+     State('market-or-limit', 'value'), State('limit-price', 'value'),
+     State('order-history-tbl', 'data')
+     ],
     # We DON'T want to start executing trades just because n_clicks was initialized to 0!!!
     prevent_initial_call=True
 )
-def trade(n_clicks, sec_type, action, security_symbol, trade_amt, currency, order_type, limit_price):
+def trade(n_clicks, sec_type, action, security_symbol, trade_amt, currency, order_type, limit_price,
+          order_history_data):
     contract = Contract()
 
     if sec_type == 'STK':
@@ -417,7 +433,7 @@ def trade(n_clicks, sec_type, action, security_symbol, trade_amt, currency, orde
     print("Checking if contract is valid...")
     contract_details = fetch_contract_details(contract)
     if isinstance(contract_details, type(None)):
-        return 'Contract for ' + security_symbol + ' is not valid'
+        return ('Contract for ' + security_symbol + ' is not valid'), order_history_data
 
     order = Order()
     order.action = action
@@ -433,4 +449,5 @@ def trade(n_clicks, sec_type, action, security_symbol, trade_amt, currency, orde
 
     msg = submit_order(contract, order)
 
-    return msg
+    order_history_data = pd.read_csv(APP_DATA_PATH)
+    return msg, order_history_data.to_json()
