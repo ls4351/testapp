@@ -450,4 +450,4 @@ def trade(n_clicks, sec_type, action, security_symbol, trade_amt, currency, orde
     msg = submit_order(contract, order)
 
     order_history_data = pd.read_csv(APP_DATA_PATH)
-    return msg, order_history_data.to_json()
+    return msg, order_history_data.to_dict('records')
