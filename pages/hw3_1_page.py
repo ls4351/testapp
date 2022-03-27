@@ -1,11 +1,14 @@
 import plotly.graph_objects as go
 import dash
-from dash import dcc
-from dash import html
-from dash import callback
+from dash import dcc, html, callback, dash_table
 from dash.dependencies import Input, Output, State
 from ibapi.contract import Contract
+from ibapi.order import Order
 from fintech_ibkr import *
+import pandas as pd
+
+APP_DATA_PATH = f"{os.getenv('TESTAPP_DATA_PATH')}\submitted_orders.csv"
+order_data = pd.read_csv(APP_DATA_PATH)
 
 layout = html.Div([
 
@@ -192,11 +195,8 @@ layout = html.Div([
         children=html.Div([dcc.Graph(id='candlestick-graph')]),
     ),
     # Another line break
-    html.Br(),
-    # Section title
+    html.H3("Section 2: Place Orders"),
     html.H4("Make a Trade"),
-    # Div to confirm what trade was made
-    html.Div(id='trade-output'),
     # Radio items to select buy or sell
     dcc.RadioItems(
         id='buy-or-sell',
@@ -206,13 +206,61 @@ layout = html.Div([
         ],
         value='BUY'
     ),
-    # Text input for the currency pair to be traded
-    dcc.Input(id='trade-currency', value='AUDCAD', type='text'),
-    # Numeric input for the trade amount
-    dcc.Input(id='trade-amt', value='20000', type='number'),
-    # Submit button for the trade
-    html.Button('Trade', id='trade-button', n_clicks=0)
+    dcc.RadioItems(
+        id='market-or-limit',
+        options=[
+            {'label': 'MARKET', 'value': 'MKT'},
+            {'label': 'LIMIT', 'value': 'LMT'}
+        ],
+        value='MKT'
+    ),
+    html.Div(
+        id='limit-price-div',
+        # The input object itself
+        children=[html.Label("Limit Price: "), dcc.Input(id='limit-price', value='0', type='number')],
+        # Style it so that the submit button appears beside the input.
+        style={'display': 'inline-block', 'padding-top': '5px'}
+    ),
+    html.Br(),
+    html.Div(
+        children=[html.Label("Currency: "), dcc.Input(id='currency', value='USD', type='text')],
+        # Style it so that the submit button appears beside the input.
+        style={'display': 'inline-block', 'padding-top': '5px'}
+    ),
+    html.Br(),
+    html.Div(
+        children=[
+            html.Label("Security Type: "),
+            dcc.Dropdown(
+                options=[
+                    {'label': 'STOCK', 'value': 'STK'},
+                    {'label': 'CASH', 'value': 'CASH'},
+                    {'label': 'CRYPTO', 'value': 'CRYPTO'},
+                ],
+                value='STK',
+                id='security-type'
+            ),
+            html.Br(),
+            dcc.Input(id='security-symbol', value='AAPL', type='text'),
+            dcc.Input(id='trade-amt', value='0', type='number'),
+            html.Button('Trade', id='trade-button', n_clicks=0)
+        ],
+        style={'display': 'inline-block', 'padding-top': '5px'}
+    ),
 
+    # Div to confirm what trade was made
+    html.Div(id='trade-output'),
+    html.Br(),
+    html.H3("Section 3: Display Order History"),
+    html.Div(
+        children=[
+            dash_table.DataTable(
+                order_data.to_dict('records'),
+                [{"name": i, "id": i} for i in order_data.columns],
+                id='order-history-tbl'
+            )],
+        style={'width': '50%', 'margin': '0 auto'}
+    )
 ])
 
 
@@ -228,6 +276,7 @@ def should_disable_button(should_disable, should_enable):
         context = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
         return context == 'submit-button-disabled'
 
+
 # Breaking the process into 2 separate triggers.
 # Rationale: If 'should_disable_button' waits for either 'submit-button' or 'candlestick-graph' directly,
 # Dash only delivers those events together to 'should_disable_button'
@@ -237,6 +286,7 @@ def should_disable_button(should_disable, should_enable):
 )
 def trigger_disable_button_(n_click):
     return 1
+
 
 @callback(
     Output(component_id='submit-button-enabled', component_property='children'),
@@ -280,7 +330,7 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
     contract.exchange = 'IDEALPRO'  # 'IDEALPRO' is the currency exchange.
     contract.currency = currency_string.split(".")[1]
 
-    print("Input:"
+    print("Graph Input:"
           f"\n\t contract.symbol: {contract.symbol}"
           f"\n\t contract.currency: {contract.currency}"
           f"\n\t end_date_time: {end_date_time}"
@@ -319,28 +369,85 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
     return ('Submitted query for ' + currency_string), fig
 
 
+@callback(
+    Output('limit-price-div', 'style'),
+    Input('market-or-limit', 'value')
+)
+def display_limit_price(order_type):
+    if order_type == 'LMT':
+        return {'display': 'inline-block'}
+    else:
+        return {'display': 'none'}
+
+
 # Callback for what to do when trade-button is pressed
 @callback(
-    # We're going to output the result to trade-output
-    Output(component_id='trade-output', component_property='children'),
+    [
+        Output(component_id='trade-output', component_property='children'),
+        Output(component_id='order-history-tbl', component_property='data')
+    ],
     # We only want to run this callback function when the trade-button is pressed
     Input('trade-button', 'n_clicks'),
     # We DON'T want to run this function whenever buy-or-sell, trade-currency, or trade-amt is updated, so we pass those
     #   in as States, not Inputs:
-    [State('buy-or-sell', 'value'), State('trade-currency', 'value'), State('trade-amt', 'value')],
+    [State('security-type', 'value'), State('buy-or-sell', 'value'), State('security-symbol', 'value'),
+     State('trade-amt', 'value'), State('currency', 'value'),
+     State('market-or-limit', 'value'), State('limit-price', 'value'),
+     State('order-history-tbl', 'data')
+     ],
     # We DON'T want to start executing trades just because n_clicks was initialized to 0!!!
     prevent_initial_call=True
 )
-def trade(n_clicks, action, trade_currency, trade_amt):  # Still don't use n_clicks, but we need the dependency
+def trade(n_clicks, sec_type, action, security_symbol, trade_amt, currency, order_type, limit_price,
+          order_history_data):
+    contract = Contract()
 
-    # Make the message that we want to send back to trade-output
-    msg = action + ' ' + trade_amt + ' ' + trade_currency
+    if sec_type == 'STK':
+        contract.symbol = security_symbol
+        contract.secType = 'STK'
+        contract.exchange = 'SMART'
+        contract.primaryExchange = 'ARCA'
+        contract.currency = currency
+    elif sec_type == 'CASH':
+        contract.symbol = security_symbol.split(".")[0]
+        contract.secType = 'CASH'
+        contract.exchange = 'IDEALPRO'
+        contract.currency = security_symbol.split(".")[1]
+    elif sec_type == 'CRYPTO':
+        contract.symbol = security_symbol
+        contract.secType = 'CRYPTO'
+        contract.currency = currency
+        contract.exchange = 'PAXOS'
 
-    # Make our trade_order object -- a DICTIONARY.
-    trade_order = {
-        "action": action,
-        "trade_currency": trade_currency,
-        "trade_amt": trade_amt
-    }
+    print("Order Input:"
+          f"\n\t sec_type: {sec_type}"
+          f"\n\t action: {action}"
+          f"\n\t contract.symbol: {contract.symbol}"
+          f"\n\t contract.currency: {contract.currency}"
+          f"\n\t currency: {currency}"
+          f"\n\t trade_amt: {trade_amt}"
+          f"\n\t order_type: {order_type}"
+          f"\n\t limit_price: {limit_price}"
+          )
 
-    return msg
+    print("Checking if contract is valid...")
+    contract_details = fetch_contract_details(contract)
+    if isinstance(contract_details, type(None)):
+        return ('Contract for ' + security_symbol + ' is not valid'), order_history_data
+
+    order = Order()
+    order.action = action
+    order.totalQuantity = trade_amt
+    order.orderType = order_type
+    if order_type == 'LMT':
+        order.lmtPrice = limit_price
+    if sec_type == 'CRYPTO':
+        order.tif = 'IOC'  # tif = TimeInForce  IOC = Immediate or Cancel
+        if action == 'BUY' and order_type == 'MKT':
+            order.cashQty = trade_amt
+            order.totalQuantity = ''
+
+    msg = submit_order(contract, order)
+
+    order_history_data = pd.read_csv(APP_DATA_PATH)
+    return msg, order_history_data.to_dict('records')
