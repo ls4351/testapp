@@ -247,6 +247,8 @@ layout = html.Div([
         ],
         style={'display': 'inline-block', 'padding-top': '5px'}
     ),
+    html.Div(id='trade-button-disabled', children=0, style=dict(display='none')),
+    html.Div(id='trade-button-enabled', children=0, style=dict(display='none')),
 
     # Div to confirm what trade was made
     html.Div(id='trade-output'),
@@ -271,10 +273,21 @@ layout = html.Div([
     Input('submit-button-disabled', 'children'),
     Input('submit-button-enabled', 'children'),
 )
-def should_disable_button(should_disable, should_enable):
+def should_disable_submit_button(should_disable, should_enable):
     if len(dash.callback_context.triggered) == 1:
         context = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
         return context == 'submit-button-disabled'
+
+
+@callback(
+    Output(component_id='trade-button', component_property='disabled'),
+    Input('trade-button-disabled', 'children'),
+    Input('trade-button-enabled', 'children'),
+)
+def should_disable_trade_button(should_disable, should_enable):
+    if len(dash.callback_context.triggered) == 1:
+        context = dash.callback_context.triggered[0]['prop_id'].split('.')[0]
+        return context == 'trade-button-disabled'
 
 
 # Breaking the process into 2 separate triggers.
@@ -284,7 +297,15 @@ def should_disable_button(should_disable, should_enable):
     Output(component_id='submit-button-disabled', component_property='children'),
     Input('submit-button', 'n_clicks'),
 )
-def trigger_disable_button_(n_click):
+def trigger_disable_submit_button(n_click):
+    return 1
+
+
+@callback(
+    Output(component_id='trade-button-disabled', component_property='children'),
+    Input('trade-button', 'n_clicks'),
+)
+def trigger_disable_trade_button(n_click):
     return 1
 
 
@@ -292,7 +313,15 @@ def trigger_disable_button_(n_click):
     Output(component_id='submit-button-enabled', component_property='children'),
     Input('candlestick-graph', 'figure'),
 )
-def trigger_enable_button(n_click):
+def trigger_enable_submit_button(n_click):
+    return 1
+
+
+@callback(
+    Output(component_id='trade-button-enabled', component_property='children'),
+    Input('order-history-tbl', 'data'),
+)
+def trigger_enable_trade_button(n_click):
     return 1
 
 
